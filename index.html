@@ -1,0 +1,568 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Выбор профессии</title>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+
+<style>
+body {
+    font-family: 'Segoe UI', sans-serif;
+    background: linear-gradient(135deg, #1f2937, #111827);
+    color: white;
+    margin: 0;
+    padding: 20px;
+}
+
+h1 {
+    text-align: center;
+    margin-bottom: 5px;
+}
+
+.grid {
+    display: grid;
+    gap: 10px;
+    justify-content: center;
+}
+
+.row-12 {
+    grid-template-columns: repeat(12, 110px);
+}
+
+.row-9 {
+    grid-template-columns: repeat(9, 110px);
+    margin-top: 15px;
+}
+
+.card {
+    height: 140px;
+    color: white;
+    text-shadow: 1px 1px 2px #000;
+    border-radius: 14px;
+    padding: 10px;
+    font-size: 12px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    cursor: grab;
+    position: relative;
+    box-shadow: 0 6px 15px rgba(0,0,0,0.4);
+    transition: transform 0.3s ease;
+    touch-action: none; /* Prevent default touch behaviors */
+}
+
+.card:hover {
+    transform: scale(1.05);
+}
+
+.rank {
+    position: absolute;
+    top: 6px;
+    left: 8px;
+    font-size: 11px;
+    font-weight: bold;
+    color: #ccc;
+}
+
+.code {
+    font-weight: bold;
+}
+
+.dragging {
+    opacity: 0.5;
+}
+
+.info-panel {
+    text-align: center;
+    margin-bottom: 20px;
+}
+
+input {
+    padding: 8px;
+    border-radius: 6px;
+    border: none;
+    width: 200px;
+    margin-right: 10px;
+}
+
+/* Mobile adaptations */
+@media (max-width: 768px) {
+    .grid {
+        grid-template-columns: 1fr; /* Single column for mobile */
+        justify-items: center;
+    }
+
+    .row-12, .row-9 {
+        grid-template-columns: 1fr;
+    }
+
+    .card {
+        width: 100%;
+        max-width: 300px; /* Limit card width on small screens */
+        height: auto;
+        min-height: 100px;
+        padding: 15px;
+        font-size: 14px; /* Slightly larger text for touch */
+    }
+
+    body {
+        padding: 10px;
+    }
+
+    input {
+        width: 100%;
+        margin-right: 0;
+        margin-bottom: 10px;
+    }
+}
+</style>
+</head>
+
+<body>
+
+<h1>Выбор профессии</h1>
+
+<p style="text-align: center; margin-bottom: 20px;">Проранжируй каждый список в порядке значимости</p>
+
+<div class="info-panel">
+    <input type="text" id="participantName" placeholder="Имя участника">
+</div>
+
+<div id="container"></div>
+
+<button onclick="exportPDF()" style="display: block; margin: 20px auto; background: #3b82f6; border: none; padding: 10px 20px; border-radius: 8px; color: white; font-size: 14px; cursor: pointer;">Экспорт в PDF</button>
+
+<script>
+const { jsPDF } = window.jspdf;
+const container = document.getElementById("container");
+
+// === Карточки ===
+let cards = [
+"ЦЖ-1 Нормальная жизнь: семья, дом, размеренность",
+"ЦЖ-2 Большая семья: много детей, родственников, знакомых, большое хозяйство",
+"ЦЖ-3 Жизнь ради идеи: научный, духовный или эстетический поиск, идейная борьба",
+"ЦЖ-4 Богатство, связи, статусность, финансовые и деловые риски",
+"ЦЖ-5 Жизненные радости: развлечения, путешествия, общение с друзьями",
+"ЦЖ-6 Радость познания: приобщение науки, духовным и культурным ценностям",
+"ЦЖ-7 Жизнь ради здоровья и красоты",
+"ЦЖ-8 Власть, влияние, известность",
+"ЦЖ-9 Уход в себя, отшельничество, увлечение мистикой, философией",
+"ЦЖ-10 Жизнь на дивиденды",
+"ЦЖ-11 Сопутствующий успех: работа и связи с богатыми, влиятельными людьми",
+"ЦЖ-12 Вложения в себя и детей: получение новых знаний и навыков, развитие талантов",
+"П-1 Техника",
+"П-2 Информация из натурных систем (тексты, показания приборов, документы и ПО)",
+"П-3 Социальные системы",
+"П-4 Нервная искусство: чувства, переживания, озарения, художественные образы",
+"П-5 Наука и система идей",
+"П-6 Живая природа (звери, птицы, рыбы, насекомые, растения и т. д.)",
+"П-7 Животные и взрослые люди",
+"П-8 Дети и подростки",
+"П-9 Детали, материалы, сырьё, подлежащие обработке",
+"Ц-1 Оценивать, проверять, контролировать",
+"Ц-2 Торговать: продажа, покупка, посредничество",
+"Ц-3 Транспортировать: перемещать людей, грузы, объекты",
+"Ц-4 Преобразовывать исходные материалы, реальные и виртуальные объекты, информацию",
+"Ц-5 Преобразовывать человеческое сознание",
+"Ц-6 Творить, изобретать, создавать новое",
+"Ц-7 Организовывать людей, руководить",
+"Ц-8 Оказывать услуги",
+"Ц-9 Работать над собой, быть в форме",
+"С-1 Ручные (посты, приборы и приспособления «золотые руки»)",
+"С-2 Механические (станки, машины и другая техника)",
+"С-3 Автоматические (работающие по заданной программе)",
+"С-4 Компьютеры",
+"С-5 Знания, способы мышления, память",
+"С-6 Выразительные движения, мимика (умение вызывать доверие и уважение, быть обаятельным)",
+"С-7 Творческое мышление, способность к нестандартным действиям, собственному взгляду на вещи",
+"С-8 Возможности организма и органов чувств (хорошее зрение, хороший слух и т. п.)",
+"С-9 Голос",
+"У-1 Бытовой микроклимат (контора офис, отдел, кабинет)",
+"У-2 Помещение с людьми (торговый зал, театр, учебная аудитория)",
+"У-3 Разъезды, частые командировки",
+"У-4 Относительная самостоятельность (возможность самому принимать решения в рамках поставленной задачи)",
+"У-5 Открытый воздух работа вне помещения",
+"У-6 Нестермальные условия (в воздухе, на воде и под водой, в шахте, на войне и т.п.",
+"У-7 Специальные условия (режим стерильности, температуры, влажности)",
+"У-8 Изысканные отношения, престижные знакомства",
+"У-9 Высокая ценная зарплата, льготы",
+"О-1 Честная профессия",
+"О-2 Здоровая профессия, минимальная нагрузка, вредности",
+"О-3 Минимальные ограничения в труде, свободный режим, отсутствие дресс-кода, возможность общения",
+"О-4 Чувство полезности, повышенная ответственность (материальная, моральная, за жизнь и здоровье людей)",
+"О-5 Приключения, риск, азарт",
+"О-6 Возможность дополнительного заработка: чаевые, подарки",
+"О-7 Тихая, спокойная работа",
+"О-8 Престижная работа: уважение, самоутверждение, зависть",
+"О-9 Работа в постоянном движении",
+"К-1 Индивидуальный труд, минимальное общение",
+"К-2 Обычный коллектив",
+"К-3 Аудитории: учебные, театральные, спортивные и прочие",
+"К-4 Клиенты, посетители — часто меняющиеся люди",
+"К-5 Дисциплина, субординация, чёткие, регламентированные отношения и обязанности",
+"К-6 Публичная работа, известность, работа на виду коллег, клиентов",
+"К-7 Дистанционное, виртуальное общение",
+"К-8 Небольшой коллектив в ограниченном пространстве",
+"К-9 Временное общение при обращении к духовному и культурному наследию через собственные творения",
+];
+
+const groups = [
+  { label: "Жизненные цели", cards: cards.slice(0, 12), colorDark: "#001f3f", colorLight: "#add8e6" },
+  { label: "Предметы работы", cards: cards.slice(12, 21), colorDark: "#006400", colorLight: "#90ee90" },
+  { label: "Цели работы", cards: cards.slice(21, 30), colorDark: "#8b0000", colorLight: "#ffcccb" },
+  { label: "Средства работы", cards: cards.slice(30, 39), colorDark: "#4b0082", colorLight: "#dda0dd" },
+  { label: "Условия работы", cards: cards.slice(39, 48), colorDark: "#ff8c00", colorLight: "#ffe4b5" },
+  { label: "Особые условия работы", cards: cards.slice(48, 57), colorDark: "#556b2f", colorLight: "#bdb76b" },
+  { label: "Способы коммуникации", cards: cards.slice(57, 66), colorDark: "#2f4f4f", colorLight: "#d3d3d3" }
+];
+
+function interpolateColor(color1, color2, factor) {
+  let result = "#";
+  for (let i = 0; i < 3; i++) {
+    let c1 = parseInt(color1.substr(1 + i * 2, 2), 16);
+    let c2 = parseInt(color2.substr(1 + i * 2, 2), 16);
+    let val = Math.round(c1 + factor * (c2 - c1));
+    result += val.toString(16).padStart(2, "0");
+  }
+  return result;
+}
+
+function renderCards() {
+  container.innerHTML = "";
+
+  groups.forEach((group, groupIndex) => {
+    let labelElem = document.createElement("h2");
+    labelElem.textContent = group.label;
+    labelElem.style.textAlign = "center";
+    container.appendChild(labelElem);
+
+    let row = document.createElement("div");
+    row.className = "grid " + (groupIndex === 0 ? "row-12" : "row-9");
+    group.cards.forEach((text, index) => {
+      createCard(row, text, group, index, group.cards.length);
+    });
+    container.appendChild(row);
+  });
+
+  updateRanks();
+}
+
+function createCard(parent, text, group, index, length) {
+  const card = document.createElement("div");
+  card.className = "card";
+  card.draggable = true;
+
+  const codeMatch = text.match(/^[\u0410-\u042F\u0041-\u005A]+-\d+/);
+  const code = codeMatch ? codeMatch[0] : '';
+  const description = text.replace(code + ' ', '');
+
+  card.innerHTML = `<div class="rank"></div><span class="code">${code}</span><br>${description}`;
+
+  const factor = length > 1 ? index / (length - 1) : 0;
+  const bgColor = interpolateColor(group.colorDark, group.colorLight, factor);
+  card.style.background = bgColor;
+
+  // Desktop drag events
+  card.addEventListener("dragstart", dragStart);
+  card.addEventListener("dragend", dragEnd);
+
+  // Touch events for mobile
+  card.addEventListener("touchstart", touchStart, { passive: false });
+  card.addEventListener("touchmove", touchMove, { passive: false });
+  card.addEventListener("touchend", touchEnd);
+
+  parent.appendChild(card);
+}
+
+// Drag functions for desktop
+function dragStart(e) {
+  this.classList.add("dragging");
+  e.dataTransfer.setData("text/plain", ""); // Required for Firefox
+  setTimeout(() => {
+    this.style.visibility = 'hidden';
+  }, 0);
+}
+
+function dragEnd() {
+  this.classList.remove("dragging");
+  this.style.visibility = '';
+  updateOrder();
+  updateRanks();
+}
+
+// Touch variables
+let touchMoved = false;
+let touchElem = null;
+let initialX = 0;
+let initialY = 0;
+let ghostElem = null;
+let lastClientX = 0;
+let lastClientY = 0;
+let isDragging = false;
+
+// Touch functions for mobile
+function touchStart(e) {
+  if (e.touches.length !== 1) return;
+  touchElem = this;
+  touchMoved = false;
+  initialX = e.touches[0].clientX - this.getBoundingClientRect().left;
+  initialY = e.touches[0].clientY - this.getBoundingClientRect().top;
+  lastClientX = e.touches[0].clientX;
+  lastClientY = e.touches[0].clientY;
+  this.classList.add("dragging");
+  this.style.visibility = 'hidden';
+
+  // Create ghost element for visual feedback
+  ghostElem = this.cloneNode(true);
+  ghostElem.style.position = "absolute";
+  ghostElem.style.zIndex = 1000;
+  ghostElem.style.opacity = 0.5;
+  ghostElem.classList.remove("dragging");
+  document.body.appendChild(ghostElem);
+  moveGhost(e.touches[0]);
+
+  isDragging = true;
+  requestAnimationFrame(autoScroll);
+}
+
+function touchMove(e) {
+  if (!touchElem || e.touches.length !== 1) return;
+  e.preventDefault();
+  touchMoved = true;
+  lastClientX = e.touches[0].clientX;
+  lastClientY = e.touches[0].clientY;
+  moveGhost(e.touches[0]);
+
+  const clientX = e.touches[0].clientX;
+  const clientY = e.touches[0].clientY;
+  reorderWithAnimation(touchElem, clientX, clientY);
+}
+
+function touchEnd(e) {
+  if (!touchElem) return;
+  if (ghostElem) {
+    document.body.removeChild(ghostElem);
+    ghostElem = null;
+  }
+  touchElem.classList.remove("dragging");
+  touchElem.style.visibility = '';
+  if (touchMoved) {
+    updateOrder();
+    updateRanks();
+  }
+  isDragging = false;
+  touchElem = null;
+}
+
+function moveGhost(touch) {
+  if (ghostElem) {
+    ghostElem.style.left = `${touch.clientX - initialX}px`;
+    ghostElem.style.top = `${touch.clientY - initialY}px`;
+  }
+}
+
+function autoScroll() {
+  if (!isDragging) return;
+
+  const viewportHeight = window.innerHeight;
+  const touchY = lastClientY;
+  let scrollAmount = 0;
+  const edgeSize = 100;
+  const maxSpeed = 30;
+
+  if (touchY < edgeSize) {
+    scrollAmount = -((edgeSize - touchY) / edgeSize * maxSpeed);
+  } else if (touchY > viewportHeight - edgeSize) {
+    scrollAmount = ((touchY - (viewportHeight - edgeSize)) / edgeSize * maxSpeed);
+  }
+
+  if (scrollAmount !== 0) {
+    window.scrollBy(0, scrollAmount);
+    reorderWithAnimation(touchElem, lastClientX, lastClientY);
+    touchMoved = true;
+  }
+
+  requestAnimationFrame(autoScroll);
+}
+
+// Dragover for desktop
+document.addEventListener("dragover", e => {
+  e.preventDefault();
+  const dragging = document.querySelector(".dragging");
+  if (!dragging) return;
+
+  const clientX = e.clientX;
+  const clientY = e.clientY;
+  reorderWithAnimation(dragging, clientX, clientY);
+});
+
+// Reorder with animation function
+function reorderWithAnimation(dragging, clientX, clientY) {
+  const srcRow = dragging.parentElement;
+  const targetGrid = dragging.parentElement; // Assume same grid, as cross not allowed
+
+  if (!targetGrid) return;
+
+  // Get current cards except dragging
+  const cardsDOM = [...targetGrid.children].filter(c => c !== dragging && c.classList.contains('card'));
+  const cards = cardsDOM.map(c => ({card: c, rect: c.getBoundingClientRect()}));
+
+  // Record old rects
+  const oldRects = cards.map(({card, rect}) => ({card, rect}));
+
+  // Determine if horizontal or vertical
+  const firstTwo = cards.slice(0, 2);
+  const isHorizontal = firstTwo.length < 2 || Math.abs(firstTwo[0].rect.top - firstTwo[1].rect.top) < 1;
+
+  // Find nextCard
+  const nextCard = cards.find(({card, rect}) => {
+    return isHorizontal ? clientX <= rect.left + rect.width / 2 : clientY <= rect.top + rect.height / 2;
+  })?.card || null;
+
+  // Reorder
+  if (nextCard) {
+    targetGrid.insertBefore(dragging, nextCard);
+  } else {
+    targetGrid.appendChild(dragging);
+  }
+
+  // Now animate the non-dragging cards
+  oldRects.forEach(({card, rect}) => {
+    const newRect = card.getBoundingClientRect();
+    const deltaX = rect.left - newRect.left;
+    const deltaY = rect.top - newRect.top;
+
+    card.style.transition = 'none';
+    card.style.transform = `translate(${deltaX}px, ${deltaY}px)`;
+
+    requestAnimationFrame(() => {
+      card.style.transition = 'transform 0.3s ease';
+      card.style.transform = '';
+    });
+  });
+}
+
+function updateOrder() {
+  const rows = container.querySelectorAll(".grid");
+  groups.forEach((group, gIdx) => {
+    const row = rows[gIdx];
+    const allCardsInRow = row.querySelectorAll(".card");
+    group.cards = Array.from(allCardsInRow).map(card => {
+      const code = card.querySelector(".code").textContent;
+      const description = card.innerText.replace(/^#\d+\s*/, '').replace(code, '').trim().replace(/^\s*/, '');
+      return `${code} ${description}`;
+    });
+  });
+}
+
+function updateRanks() {
+  const rows = container.querySelectorAll(".grid");
+  rows.forEach(row => {
+    const cardsInRow = row.querySelectorAll(".card");
+    cardsInRow.forEach((card, idx) => {
+      card.querySelector(".rank").innerText = "#" + (idx + 1);
+    });
+  });
+}
+
+function exportPDF() {
+  const name = document.getElementById("participantName").value.trim() || "default";
+  const fileName = `${name}-professions-ranking.pdf`;
+
+  const tempContainer = document.createElement('div');
+  tempContainer.style.position = 'absolute';
+  tempContainer.style.left = '-9999px';
+  tempContainer.style.background = 'linear-gradient(135deg, #1f2937, #111827)';
+  tempContainer.style.padding = '20px';
+  tempContainer.style.color = 'white';
+  tempContainer.style.width = '1200px'; // Wider to avoid mobile media query
+  document.body.appendChild(tempContainer);
+
+  const title = document.createElement('h1');
+  title.textContent = 'Выбор профессии';
+  title.style.textAlign = 'center';
+  tempContainer.appendChild(title);
+
+  const instruction = document.createElement('p');
+  instruction.textContent = 'Проранжируй каждый список в порядке значимости';
+  instruction.style.textAlign = 'center';
+  instruction.style.marginBottom = '20px';
+  tempContainer.appendChild(instruction);
+
+  const rows = container.querySelectorAll('.grid');
+  groups.forEach((group, gIdx) => {
+    const labelElem = document.createElement("h2");
+    labelElem.textContent = group.label;
+    labelElem.style.textAlign = "center";
+    tempContainer.appendChild(labelElem);
+
+    const row = rows[gIdx];
+    const cardsInRow = row.querySelectorAll(".card");
+    const top3Cards = Array.from(cardsInRow).slice(0, 3);
+
+    const tempRow = document.createElement("div");
+    tempRow.className = "grid row-3";
+    tempRow.style.gridTemplateColumns = "repeat(3, 110px)";
+    tempRow.style.marginTop = "15px";
+
+    top3Cards.forEach(card => {
+      const clonedCard = card.cloneNode(true);
+      // Reset mobile styles for PDF
+      clonedCard.style.width = '';
+      clonedCard.style.maxWidth = '';
+      clonedCard.style.height = '140px';
+      clonedCard.style.minHeight = '';
+      clonedCard.style.padding = '10px';
+      clonedCard.style.fontSize = '12px';
+      tempRow.appendChild(clonedCard);
+    });
+
+    tempContainer.appendChild(tempRow);
+  });
+
+  html2canvas(tempContainer, { scale: 2 }).then(canvas => {
+    const pdf = new jsPDF('l', 'mm', 'a4');
+    const pdfWidth = pdf.internal.pageSize.getWidth();
+    const pdfHeight = pdf.internal.pageSize.getHeight();
+    const imgWidth = pdfWidth;
+    const imgHeight = canvas.height * imgWidth / canvas.width;
+    let heightLeft = imgHeight;
+    let offsetY = 0;
+    const ratio = imgWidth / canvas.width;
+
+    while (heightLeft > 0) {
+      const pageHeightInPdf = Math.min(pdfHeight, heightLeft);
+      const srcHeight = pageHeightInPdf / ratio;
+
+      const pageCanvas = document.createElement('canvas');
+      pageCanvas.width = canvas.width;
+      pageCanvas.height = srcHeight;
+      const ctx = pageCanvas.getContext('2d');
+      ctx.drawImage(canvas, 0, offsetY, canvas.width, srcHeight, 0, 0, canvas.width, srcHeight);
+
+      const pageImgData = pageCanvas.toDataURL('image/png');
+      pdf.addImage(pageImgData, 'PNG', 0, 0, imgWidth, pageHeightInPdf);
+
+      offsetY += srcHeight;
+      heightLeft -= pageHeightInPdf;
+
+      if (heightLeft > 0) {
+        pdf.addPage();
+      }
+    }
+
+    pdf.save(fileName);
+    document.body.removeChild(tempContainer);
+  });
+}
+
+renderCards();
+</script>
+
+</body>
+</html>
