@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="ru">
 <head>
@@ -283,8 +282,10 @@ function createCard(parent, text, group, index, length) {
 // Drag functions for desktop
 function dragStart(e) {
   this.classList.add("dragging");
-  this.style.visibility = 'hidden';
   e.dataTransfer.setData("text/plain", ""); // Required for Firefox
+  setTimeout(() => {
+    this.style.visibility = 'hidden';
+  }, 0);
 }
 
 function dragEnd() {
@@ -479,7 +480,7 @@ function exportPDF() {
   tempContainer.style.background = 'linear-gradient(135deg, #1f2937, #111827)';
   tempContainer.style.padding = '20px';
   tempContainer.style.color = 'white';
-  tempContainer.style.width = '360px'; // To keep card sizes unchanged by constraining the container
+  tempContainer.style.width = '1200px'; // Wider to avoid mobile media query
   document.body.appendChild(tempContainer);
 
   const title = document.createElement('h1');
@@ -511,6 +512,13 @@ function exportPDF() {
 
     top3Cards.forEach(card => {
       const clonedCard = card.cloneNode(true);
+      // Reset mobile styles for PDF
+      clonedCard.style.width = '';
+      clonedCard.style.maxWidth = '';
+      clonedCard.style.height = '140px';
+      clonedCard.style.minHeight = '';
+      clonedCard.style.padding = '10px';
+      clonedCard.style.fontSize = '12px';
       tempRow.appendChild(clonedCard);
     });
 
