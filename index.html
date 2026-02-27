@@ -17,7 +17,7 @@ body {
     padding: 20px;
 }
 
-h1 {
+h1, h2 {
     text-align: center;
     margin-bottom: 5px;
 }
@@ -28,14 +28,11 @@ h1 {
     justify-content: center;
 }
 
-.row-12 {
-    grid-template-columns: repeat(12, 110px);
-}
-
-.row-9 {
-    grid-template-columns: repeat(9, 110px);
-    margin-top: 15px;
-}
+.row-12 { grid-template-columns: repeat(12, 110px); }
+.row-9  { grid-template-columns: repeat(9,  110px); margin-top: 15px; }
+.row-7  { grid-template-columns: repeat(7,  110px); margin-top: 15px; }
+.row-6 { grid-template-columns: repeat(6, 110px); margin-top: 15px; }
+.row-3 { grid-template-columns: repeat(3, 110px); margin-top: 15px; }
 
 .card {
     height: 140px;
@@ -52,12 +49,18 @@ h1 {
     cursor: grab;
     position: relative;
     box-shadow: 0 6px 15px rgba(0,0,0,0.4);
-    transition: transform 0.3s ease;
-    touch-action: none; /* Prevent default touch behaviors */
+    transition: transform 0.3s ease, opacity 0.2s;
+    touch-action: none;
 }
 
 .card:hover {
     transform: scale(1.05);
+}
+
+.card.selected {
+    opacity: 0.6;
+    transform: scale(0.92);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.6);
 }
 
 .rank {
@@ -79,7 +82,7 @@ h1 {
 
 .info-panel {
     text-align: center;
-    margin-bottom: 20px;
+    margin: 10px 0 20px;
 }
 
 input {
@@ -90,44 +93,53 @@ input {
     margin-right: 10px;
 }
 
-/* Mobile adaptations */
+#selected-container {
+    margin-top: 40px;
+    padding-top: 20px;
+    border-top: 2px dashed #666;
+}
+
+#selected-container h2 {
+    color: #fbbf24;
+}
+
+/* Цвета групп */
+.group-Жизненные-цели     { background: #dc2626; } /* красный */
+.group-Предметы-работы    { background: #2563eb; } /* синий */
+.group-Цели-работы        { background: #60a5fa; } /* голубой */
+.group-Средства-работы    { background: #ea580c; } /* оранжевый */
+.group-Условия-работы     { background: #16a34a; } /* зеленый */
+.group-Особые-условия     { background: #eab308; } /* желтый */
+.group-Способы-коммуникации { background: #7c3aed; } /* фиолетовый */
+
+/* Mobile */
 @media (max-width: 768px) {
     .grid {
-        grid-template-columns: 1fr; /* Single column for mobile */
+        grid-template-columns: 1fr;
         justify-items: center;
     }
-
-    .row-12, .row-9 {
+    .row-12, .row-9, .row-7, .row-6, .row-3 {
         grid-template-columns: 1fr;
     }
-
     .card {
         width: 100%;
-        max-width: 300px; /* Limit card width on small screens */
+        max-width: 300px;
         height: auto;
         min-height: 100px;
         padding: 15px;
-        font-size: 14px; /* Slightly larger text for touch */
+        font-size: 14px;
     }
-
-    body {
-        padding: 10px;
-    }
-
     input {
         width: 100%;
-        margin-right: 0;
-        margin-bottom: 10px;
+        margin: 0 0 10px;
     }
 }
 </style>
 </head>
-
 <body>
 
 <h1>Выбор профессии</h1>
-
-<p style="text-align: center; margin-bottom: 20px;">Проранжируй каждый список в порядке значимости</p>
+<p style="text-align: center; margin-bottom: 20px;">Проранжируй каждый список в порядке значимости.<br>Двойной клик по карточке → перенос в «Выбранные карты» (3 + 1+1+1+1+1+1)</p>
 
 <div class="info-panel">
     <input type="text" id="participantName" placeholder="Имя участника">
@@ -135,148 +147,310 @@ input {
 
 <div id="container"></div>
 
-<button onclick="exportPDF()" style="display: block; margin: 20px auto; background: #3b82f6; border: none; padding: 10px 20px; border-radius: 8px; color: white; font-size: 14px; cursor: pointer;">Экспорт в PDF</button>
+<div id="selected-container">
+    <h2>Выбранные карты</h2>
+    <div id="goals-selected" class="grid row-3"></div>
+    <div id="others-selected" class="grid row-6"></div>
+    <p style="text-align:center; font-size:0.9em; color:#bbb; margin-top:10px;">
+        Выбрано: <span id="selected-count">0</span> / максимум 9
+    </p>
+</div>
+
+<button onclick="exportPDF()" style="display:block; margin:40px auto; background:#3b82f6; border:none; padding:12px 28px; border-radius:8px; color:white; font-size:15px; cursor:pointer;">
+    Экспорт в PDF
+</button>
 
 <script>
 const { jsPDF } = window.jspdf;
 const container = document.getElementById("container");
+const goalsSelected = document.getElementById("goals-selected");
+const othersSelected = document.getElementById("others-selected");
+const countDisplay = document.getElementById("selected-count");
 
-// === Карточки ===
-let cards = [
-"Ценность 1 - Спокойная жизнь: семья, собственное жильё, стабильность",
-"Ценность 2 - Многодетность и родственные связи: дети, родня, широкий круг знакомых, крупное хозяйство",
-"Ценность 3 - Служение идее: научные, духовные или эстетические искания, мировоззренческая борьба",
-"Ценность 4 - Материальное благополучие, социальные контакты, престиж, предпринимательские и финансовые риски",
-"Ценность 5 - Наслаждение жизнью: досуг, поездки, дружеское общение",
-"Ценность 6 - Удовольствие от обучения: приобщение к научным, духовным и культурным ценностям",
-"Ценность 7 - Ориентация на здоровье и внешнюю привлекательность",
-"Ценность 8 - Доминирование, авторитет, публичная известность",
-"Ценность 9 - Самоуглубление, уединённость, интерес к мистике и философским размышлениям",
-"Ценность 10 - Существование за счёт пассивного дохода",
-"Ценность 11 - Успех через окружение: деятельность и связи с обеспеченными и влиятельными персонами",
-"Ценность 12 - Инвестиции в личностный и детский рост: освоение новых компетенций, раскрытие способностей",
-"ПТ-1 Технические устройства",
-"ПТ-2 Данные из природных и технических источников (тексты, измерения приборов, документация, программные продукты)",
-"ПТ-3 Общественные структуры",
-"ПТ-4 Эмоционально-художественная сфера: чувства, впечатления, инсайты, образы",
-"ПТ-5 Научные знания и концептуальные системы",
-"ПТ-6 Биологический мир (животные, птицы, рыбы, насекомые, растения и др.)",
-"ПТ-7 Взрослые люди",
-"ПТ-8 Несовершеннолетние: дети и подростки",
-"ПТ-9 Компоненты, сырьевые ресурсы и материалы для обработки",
-"ЦТ-1 Анализировать, инспектировать, осуществлять надзор",
-"ЦT-2 Осуществлять торговые операции: реализовывать, приобретать, выступать посредником",
-"ЦТ-3 Перевозить: доставлять людей и объекты",
-"ЦТ-4 Модифицировать материалы, физические и цифровые объекты, сведения",
-"ЦТ-5 Воздействовать на мышление и мировоззрение людей",
-"ЦТ-6 Созидать, разрабатывать, генерировать новое",
-"ЦТ-7 Координировать коллектив, управлять процессами",
-"ЦТ-8 Предоставлять сервис",
-"ЦТ-9 Самосовершенствоваться, поддерживать физическую форму",
-"СТ-1 Ручные навыки (инструменты, приборы, мастерство)",
-"СТ-2 Механизированные средства (оборудование, машины, технические агрегаты)",
-"СТ-3 Программно управляемые системы",
-"СТ-4 Вычислительная техника",
-"СТ-5 Интеллектуальный багаж, когнитивные стратегии, память",
-"СТ-6 Пластика и мимика (умение располагать к себе, внушать доверие)",
-"СТ-7 Креативное мышление, нестандартный подход, оригинальная позиция",
-"СТ-8 Физические ресурсы организма и чувствительность (острое зрение, слух и др.)",
-"СТ-9 Речевые данные",
-"УТ-1 Офисная среда (кабинет, отдел, рабочее помещение)",
-"УТ-2 Пространство с присутствием людей (магазинный зал, сцена, аудитория)",
-"УТ-3 Постоянные поездки, служебные командировки",
-"УТ-4 Частичная автономия (самостоятельное принятие решений в рамках задачи)",
-"УТ-5 Деятельность на открытом пространстве",
-"УТ-6 Экстремальные или сложные условия (в воздухе, под водой, в шахтах, в боевых зонах и т.д.)",
-"УТ-7 Особый режим работы (стерильность, определённая температура, влажность)",
-"УТ-8 Элитные контакты, статусное окружение",
-"УТ-9 Высокооплачиваемый труд, социальные бонусы",
-"ДУТ-1 Добросовестная деятельность",
-"ДУТ-2 Безопасная профессия с умеренной нагрузкой",
-"ДУТ-3 Свободный формат труда: гибкий график, отсутствие строгого дресс-кода, открытое общение",
-"ДУТ-4 Осознание значимости работы, высокая степень ответственности (финансовой, моральной, за безопасность людей)",
-"ДУТ-5 Драйв, рискованные ситуации, элемент азарта",
-"ДУТ-6 Дополнительные источники дохода (бонусы, чаевые, подарки)",
-"ДУТ-7 Размеренная, спокойная деятельность",
-"ДУТ-8 Статусная занятость: признание, уважение, самоутверждение",
-"ДУТ-9 Динамичная работа без статичности",
-"КТ-1 Самостоятельная деятельность с минимальными контактами",
-"КТ-2 Стандартный рабочий коллектив",
-"КТ-3 Работа с аудиториями (образовательными, театральными, спортивными и др.)",
-"КТ-4 Взаимодействие с клиентами и посетителями — регулярно сменяющийся поток людей",
-"КТ-5 Чёткая иерархия, дисциплина, регламентированные обязанности",
-"КТ-6 Публичная деятельность, работа на виду у окружающих",
-"КТ-7 Онлайн-коммуникация, удалённое взаимодействие",
-"КТ-8 Малочисленная команда в ограниченном пространстве",
-"КТ-9 Эпизодическое взаимодействие через обращение к духовному и культурному наследию посредством собственных произведений",
+let cards = ["ЦЖ-1 Нормальная жизнь: семья, дом, размеренность",
+
+"ЦЖ-2 Большая семья: много детей, родственников, знакомых, большое хозяйство",
+
+"ЦЖ-3 Жизнь ради идеи: научный, духовный или эстетический поиск, идейная борьба",
+
+"ЦЖ-4 Богатство, связи, статусность, финансовые и деловые риски",
+
+"ЦЖ-5 Жизненные радости: развлечения, путешествия, общение с друзьями",
+
+"ЦЖ-6 Радость познания: приобщение науки, духовным и культурным ценностям",
+
+"ЦЖ-7 Жизнь ради здоровья и красоты",
+
+"ЦЖ-8 Власть, влияние, известность",
+
+"ЦЖ-9 Уход в себя, отшельничество, увлечение мистикой, философией",
+
+"ЦЖ-10 Жизнь на дивиденды",
+
+"ЦЖ-11 Сопутствующий успех: работа и связи с богатыми, влиятельными людьми",
+
+"ЦЖ-12 Вложения в себя и детей: получение новых знаний и навыков, развитие талантов",
+
+"П-1 Техника",
+
+"П-2 Информация из натурных систем (тексты, показания приборов, документы и ПО)",
+
+"П-3 Социальные системы",
+
+"П-4 Нервная искусство: чувства, переживания, озарения, художественные образы",
+
+"П-5 Наука и система идей",
+
+"П-6 Живая природа (звери, птицы, рыбы, насекомые, растения и т. д.)",
+
+"П-7 Животные и взрослые люди",
+
+"П-8 Дети и подростки",
+
+"П-9 Детали, материалы, сырьё, подлежащие обработке",
+
+"Ц-1 Оценивать, проверять, контролировать",
+
+"Ц-2 Торговать: продажа, покупка, посредничество",
+
+"Ц-3 Транспортировать: перемещать людей, грузы, объекты",
+
+"Ц-4 Преобразовывать исходные материалы, реальные и виртуальные объекты, информацию",
+
+"Ц-5 Преобразовывать человеческое сознание",
+
+"Ц-6 Творить, изобретать, создавать новое",
+
+"Ц-7 Организовывать людей, руководить",
+
+"Ц-8 Оказывать услуги",
+
+"Ц-9 Работать над собой, быть в форме",
+
+"С-1 Ручные (посты, приборы и приспособления «золотые руки»)",
+
+"С-2 Механические (станки, машины и другая техника)",
+
+"С-3 Автоматические (работающие по заданной программе)",
+
+"С-4 Компьютеры",
+
+"С-5 Знания, способы мышления, память",
+
+"С-6 Выразительные движения, мимика (умение вызывать доверие и уважение, быть обаятельным)",
+
+"С-7 Творческое мышление, способность к нестандартным действиям, собственному взгляду на вещи",
+
+"С-8 Возможности организма и органов чувств (хорошее зрение, хороший слух и т. п.)",
+
+"С-9 Голос",
+
+"У-1 Бытовой микроклимат (контора офис, отдел, кабинет)",
+
+"У-2 Помещение с людьми (торговый зал, театр, учебная аудитория)",
+
+"У-3 Разъезды, частые командировки",
+
+"У-4 Относительная самостоятельность (возможность самому принимать решения в рамках поставленной задачи)",
+
+"У-5 Открытый воздух работа вне помещения",
+
+"У-6 Нестермальные условия (в воздухе, на воде и под водой, в шахте, на войне и т.п.",
+
+"У-7 Специальные условия (режим стерильности, температуры, влажности)",
+
+"У-8 Изысканные отношения, престижные знакомства",
+
+"У-9 Высокая ценная зарплата, льготы",
+
+"О-1 Честная профессия",
+
+"О-2 Здоровая профессия, минимальная нагрузка, вредности",
+
+"О-3 Минимальные ограничения в труде, свободный режим, отсутствие дресс-кода, возможность общения",
+
+"О-4 Чувство полезности, повышенная ответственность (материальная, моральная, за жизнь и здоровье людей)",
+
+"О-5 Приключения, риск, азарт",
+
+"О-6 Возможность дополнительного заработка: чаевые, подарки",
+
+"О-7 Тихая, спокойная работа",
+
+"О-8 Престижная работа: уважение, самоутверждение, зависть",
+
+"О-9 Работа в постоянном движении",
+
+"К-1 Индивидуальный труд, минимальное общение",
+
+"К-2 Обычный коллектив",
+
+"К-3 Аудитории: учебные, театральные, спортивные и прочие",
+
+"К-4 Клиенты, посетители — часто меняющиеся люди",
+
+"К-5 Дисциплина, субординация, чёткие, регламентированные отношения и обязанности",
+
+"К-6 Публичная работа, известность, работа на виду коллег, клиентов",
+
+"К-7 Дистанционное, виртуальное общение",
+
+"К-8 Небольшой коллектив в ограниченном пространстве",
+
+"К-9 Временное общение при обращении к духовному и культурному наследию через собственные творения",
 ];
 
 const groups = [
-  { label: "Ценности", cards: cards.slice(0, 12), colorDark: "#001f3f", colorLight: "#add8e6" },
-  { label: "Предметы труда", cards: cards.slice(12, 21), colorDark: "#006400", colorLight: "#90ee90" },
-  { label: "Цели труда", cards: cards.slice(21, 30), colorDark: "#8b0000", colorLight: "#ffcccb" },
-  { label: "Средства труда", cards: cards.slice(30, 39), colorDark: "#4b0082", colorLight: "#dda0dd" },
-  { label: "Условия труда", cards: cards.slice(39, 48), colorDark: "#ff8c00", colorLight: "#ffe4b5" },
-  { label: "Доп.условия труда", cards: cards.slice(48, 57), colorDark: "#556b2f", colorLight: "#bdb76b" },
-  { label: "Коммуникации труда", cards: cards.slice(57, 66), colorDark: "#2f4f4f", colorLight: "#d3d3d3" }
+  { label: "Жизненные цели",       cards: cards.slice(0,12),  className: "group-Жизненные-цели"     },
+  { label: "Предметы работы",      cards: cards.slice(12,21), className: "group-Предметы-работы"    },
+  { label: "Цели работы",          cards: cards.slice(21,30), className: "group-Цели-работы"        },
+  { label: "Средства работы",      cards: cards.slice(30,39), className: "group-Средства-работы"    },
+  { label: "Условия работы",       cards: cards.slice(39,48), className: "group-Условия-работы"     },
+  { label: "Особые условия работы",cards: cards.slice(48,57), className: "group-Особые-условия"     },
+  { label: "Способы коммуникации", cards: cards.slice(57,66), className: "group-Способы-коммуникации" }
 ];
 
-function interpolateColor(color1, color2, factor) {
-  let result = "#";
-  for (let i = 0; i < 3; i++) {
-    let c1 = parseInt(color1.substr(1 + i * 2, 2), 16);
-    let c2 = parseInt(color2.substr(1 + i * 2, 2), 16);
-    let val = Math.round(c1 + factor * (c2 - c1));
-    result += val.toString(16).padStart(2, "0");
-  }
-  return result;
-}
+let selectedCards = []; // массив объектов {code, text, groupIdx}
 
 function renderCards() {
   container.innerHTML = "";
+  goalsSelected.innerHTML = "";
+  othersSelected.innerHTML = "";
+  selectedCards = [];
+  countDisplay.textContent = "0";
 
-  groups.forEach((group, groupIndex) => {
-    let labelElem = document.createElement("h2");
-    labelElem.textContent = group.label;
-    labelElem.style.textAlign = "center";
-    container.appendChild(labelElem);
+  groups.forEach((group, gIdx) => {
+    let label = document.createElement("h2");
+    label.textContent = group.label;
+    container.appendChild(label);
 
     let row = document.createElement("div");
-    row.className = "grid " + (groupIndex === 0 ? "row-12" : "row-9");
-    group.cards.forEach((text, index) => {
-      createCard(row, text, group, index, group.cards.length);
+    row.className = `grid ${gIdx === 0 ? "row-12" : "row-9"}`;
+    
+    group.cards.forEach(text => {
+      createCard(row, text, group.className, gIdx);
     });
+    
     container.appendChild(row);
   });
 
   updateRanks();
 }
 
-function createCard(parent, text, group, index, length) {
+function createCard(parent, text, groupClass, groupIdx) {
   const card = document.createElement("div");
-  card.className = "card";
+  card.className = `card ${groupClass}`;
   card.draggable = true;
 
   const codeMatch = text.match(/^[\u0410-\u042F\u0041-\u005A]+-\d+/);
   const code = codeMatch ? codeMatch[0] : '';
-  const description = text.replace(code + ' ', '');
+  const desc = text.replace(code + ' ', '');
 
-  card.innerHTML = `<div class="rank"></div><span class="code">${code}</span><br>${description}`;
+  card.innerHTML = `<div class="rank"></div><span class="code">${code}</span><br>${desc}`;
+  card.dataset.code = code;
+  card.dataset.group = groupIdx;
 
-  const factor = length > 1 ? index / (length - 1) : 0;
-  const bgColor = interpolateColor(group.colorDark, group.colorLight, factor);
-  card.style.background = bgColor;
+  // Одиночный и двойной клик
+  let clickTimeout;
+  card.addEventListener("click", e => {
+    if (e.detail === 2) {
+      clearTimeout(clickTimeout);
+      toggleSelected(card);
+    } else if (e.detail === 1) {
+      clickTimeout = setTimeout(() => {
+        // здесь можно добавить логику одиночного клика, если нужно
+      }, 300);
+    }
+  });
 
-  // Desktop drag events
+  // drag (оставляем как было)
   card.addEventListener("dragstart", dragStart);
-  card.addEventListener("dragend", dragEnd);
-
-  // Touch events for mobile
-  card.addEventListener("touchstart", touchStart, { passive: false });
-  card.addEventListener("touchmove", touchMove, { passive: false });
-  card.addEventListener("touchend", touchEnd);
+  card.addEventListener("dragend",   dragEnd);
+  card.addEventListener("touchstart", touchStart, {passive:false});
+  card.addEventListener("touchmove",  touchMove,  {passive:false});
+  card.addEventListener("touchend",   touchEnd);
 
   parent.appendChild(card);
+}
+
+function toggleSelected(card) {
+  const code = card.dataset.code;
+  const groupIdx = parseInt(card.dataset.group);
+  const alreadySelected = selectedCards.some(c => c.code === code);
+
+  if (alreadySelected) {
+    // удаляем из выбранных (оригинал остается)
+    const idx = selectedCards.findIndex(c => c.code === code);
+    selectedCards.splice(idx, 1);
+    
+    // находим и удаляем клон в selected
+    const selectedClone = (groupIdx === 0 ? goalsSelected : othersSelected).querySelector(`[data-code="${code}"]`);
+    if (selectedClone) selectedClone.remove();
+
+    if (groupIdx === 0) {
+      sortGoals();
+    } else {
+      sortOthers();
+    }
+  } else {
+    // пытаемся добавить
+    if (!canAddMore(groupIdx)) return alert("Нельзя выбрать больше разрешённого количества из этой группы");
+
+    // добавляем клон в selected
+    const clone = card.cloneNode(true);
+    clone.classList.add("selected");
+    clone.dataset.code = code;
+    clone.dataset.group = groupIdx;
+    clone.querySelector(".rank").innerText = ""; // убираем ранг в selected
+    clone.addEventListener("click", e => {
+      if (e.detail === 2) toggleSelected(clone);
+    });
+    
+    if (groupIdx === 0) {
+      goalsSelected.appendChild(clone);
+      sortGoals();
+    } else {
+      othersSelected.appendChild(clone);
+      sortOthers();
+    }
+
+    selectedCards.push({
+      code: code,
+      text: `${code} ${card.innerText.replace(/#\d+\s*/, '').replace(code, '').trim()}`,
+      groupIdx: groupIdx
+    });
+  }
+
+  countDisplay.textContent = selectedCards.length;
+  updateRanks();
+}
+
+function sortGoals() {
+  const div = goalsSelected;
+  const cardsArr = Array.from(div.children);
+  cardsArr.sort((a, b) => {
+    const numA = parseInt(a.dataset.code.split('-')[1]);
+    const numB = parseInt(b.dataset.code.split('-')[1]);
+    return numA - numB;
+  });
+  div.innerHTML = '';
+  cardsArr.forEach(c => div.appendChild(c));
+}
+
+function sortOthers() {
+  const div = othersSelected;
+  const cardsArr = Array.from(div.children);
+  cardsArr.sort((a, b) => parseInt(a.dataset.group) - parseInt(b.dataset.group));
+  div.innerHTML = '';
+  cardsArr.forEach(c => div.appendChild(c));
+}
+
+function canAddMore(groupIdx) {
+  if (groupIdx === 0) { // Жизненные цели
+    return selectedCards.filter(c => c.groupIdx === 0).length < 3;
+  } else {
+    return selectedCards.filter(c => c.groupIdx === groupIdx).length < 1;
+  }
 }
 
 // Drag functions for desktop
@@ -453,10 +627,10 @@ function updateOrder() {
     const row = rows[gIdx];
     const allCardsInRow = row.querySelectorAll(".card");
     group.cards = Array.from(allCardsInRow).map(card => {
-      const code = card.querySelector(".code").textContent;
-      const description = card.innerText.replace(/^#\d+\s*/, '').replace(code, '').trim().replace(/^\s*/, '');
-      return `${code} ${description}`;
-    });
+      const code = card.querySelector(".code")?.textContent || "";
+      const desc = card.innerText.replace(/#\d+\s*/, '').replace(code, '').trim();
+      return `${code} ${desc}`.trim();
+    }).filter(Boolean);
   });
 }
 
@@ -524,6 +698,54 @@ function exportPDF() {
 
     tempContainer.appendChild(tempRow);
   });
+
+  // Добавляем выбранные карты в PDF
+  const selectedLabel = document.createElement("h2");
+  selectedLabel.textContent = "Выбранные карты";
+  selectedLabel.style.textAlign = "center";
+  tempContainer.appendChild(selectedLabel);
+
+  // Goals row
+  const tempGoalsRow = document.createElement("div");
+  tempGoalsRow.className = "grid row-3";
+  tempGoalsRow.style.gridTemplateColumns = "repeat(3, 110px)";
+  tempGoalsRow.style.marginTop = "15px";
+
+  goalsSelected.querySelectorAll(".card").forEach(card => {
+    const clonedCard = card.cloneNode(true);
+    clonedCard.style.width = '';
+    clonedCard.style.maxWidth = '';
+    clonedCard.style.height = '140px';
+    clonedCard.style.minHeight = '';
+    clonedCard.style.padding = '10px';
+    clonedCard.style.fontSize = '12px';
+    clonedCard.classList.remove("selected");
+    clonedCard.querySelector(".rank").innerText = "";
+    tempGoalsRow.appendChild(clonedCard);
+  });
+
+  tempContainer.appendChild(tempGoalsRow);
+
+  // Others row
+  const tempOthersRow = document.createElement("div");
+  tempOthersRow.className = "grid row-6";
+  tempOthersRow.style.gridTemplateColumns = "repeat(6, 110px)";
+  tempOthersRow.style.marginTop = "15px";
+
+  othersSelected.querySelectorAll(".card").forEach(card => {
+    const clonedCard = card.cloneNode(true);
+    clonedCard.style.width = '';
+    clonedCard.style.maxWidth = '';
+    clonedCard.style.height = '140px';
+    clonedCard.style.minHeight = '';
+    clonedCard.style.padding = '10px';
+    clonedCard.style.fontSize = '12px';
+    clonedCard.classList.remove("selected");
+    clonedCard.querySelector(".rank").innerText = "";
+    tempOthersRow.appendChild(clonedCard);
+  });
+
+  tempContainer.appendChild(tempOthersRow);
 
   html2canvas(tempContainer, { scale: 2 }).then(canvas => {
     const pdf = new jsPDF('l', 'mm', 'a4');
