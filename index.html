@@ -51,6 +51,12 @@ h1, h2 {
     box-shadow: 0 6px 15px rgba(0,0,0,0.4);
     transition: transform 0.3s ease, opacity 0.2s;
     touch-action: none;
+    
+    /* Исправления для мобильных (iPhone + Samsung) */
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
 }
 
 .card:hover {
@@ -139,7 +145,7 @@ input {
 <body>
 
 <h1>Выбор профессии</h1>
-<p style="text-align: center; margin-bottom: 20px;">Проранжируй каждый список в порядке значимости.<br>Двойной клик по карточке → перенос в «Выбранные карты» (3 + 1+1+1+1+1+1)</p>
+<p style="text-align: center; margin-bottom: 20px;">Проранжируй каждый список в порядке значимости.<br>Двойной клик / двойной тап по карточке → перенос в «Выбранные карты» (3 + 1+1+1+1+1+1)</p>
 
 <div class="info-panel">
     <input type="text" id="participantName" placeholder="Имя участника">
@@ -197,7 +203,7 @@ let cards = ["ЦЖ-1 Нормальная жизнь: семья, дом, раз
 
 "П-3 Социальные системы",
 
-"П-4 Нервная искусство: чувства, переживания, озарения, художественные образы",
+"П-4 Мир и искусство: чувства, переживания, озарения, художественные образы",
 
 "П-5 Наука и система идей",
 
@@ -312,6 +318,25 @@ const groups = [
 
 let selectedCards = []; // массив объектов {code, text, groupIdx}
 
+// === НОВАЯ ФУНКЦИЯ: двойной тап для мобильных (iPhone + Samsung) ===
+function attachDoubleTapHandler(card) {
+  card.dataset.lastTap = "0";
+  card.addEventListener("touchstart", function(e) {
+    if (e.touches.length !== 1) return;
+    const now = Date.now();
+    const lastTap = parseInt(this.dataset.lastTap) || 0;
+    if (now - lastTap < 300) {
+      // Двойной тап — переносим/убираем карточку
+      e.preventDefault();
+      toggleSelected(this);
+      this.dataset.suppressClick = "true";
+      this.dataset.lastTap = "0";
+    } else {
+      this.dataset.lastTap = now.toString();
+    }
+  }, { passive: false });
+}
+
 function renderCards() {
   container.innerHTML = "";
   goalsSelected.innerHTML = "";
@@ -350,25 +375,34 @@ function createCard(parent, text, groupClass, groupIdx) {
   card.dataset.code = code;
   card.dataset.group = groupIdx;
 
-  // Одиночный и двойной клик
+  // === КЛИК (для десктопа) с защитой от двойного срабатывания на мобильных ===
   let clickTimeout;
   card.addEventListener("click", e => {
+    if (card.dataset.suppressClick === "true") {
+      delete card.dataset.suppressClick;
+      return;
+    }
     if (e.detail === 2) {
       clearTimeout(clickTimeout);
       toggleSelected(card);
     } else if (e.detail === 1) {
       clickTimeout = setTimeout(() => {
-        // здесь можно добавить логику одиночного клика, если нужно
+        // одиночный клик ничего не делает
       }, 300);
     }
   });
 
-  // drag (оставляем как было)
+  // drag (desktop)
   card.addEventListener("dragstart", dragStart);
   card.addEventListener("dragend",   dragEnd);
+
+  // touch drag (мобильные)
   card.addEventListener("touchstart", touchStart, {passive:false});
   card.addEventListener("touchmove",  touchMove,  {passive:false});
   card.addEventListener("touchend",   touchEnd);
+
+  // === ДВОЙНОЙ ТАП ДЛЯ МОБИЛЬНЫХ ===
+  attachDoubleTapHandler(card);
 
   parent.appendChild(card);
 }
@@ -379,11 +413,10 @@ function toggleSelected(card) {
   const alreadySelected = selectedCards.some(c => c.code === code);
 
   if (alreadySelected) {
-    // удаляем из выбранных (оригинал остается)
+    // удаляем
     const idx = selectedCards.findIndex(c => c.code === code);
     selectedCards.splice(idx, 1);
     
-    // находим и удаляем клон в selected
     const selectedClone = (groupIdx === 0 ? goalsSelected : othersSelected).querySelector(`[data-code="${code}"]`);
     if (selectedClone) selectedClone.remove();
 
@@ -393,19 +426,28 @@ function toggleSelected(card) {
       sortOthers();
     }
   } else {
-    // пытаемся добавить
     if (!canAddMore(groupIdx)) return alert("Нельзя выбрать больше разрешённого количества из этой группы");
 
-    // добавляем клон в selected
     const clone = card.cloneNode(true);
     clone.classList.add("selected");
     clone.dataset.code = code;
     clone.dataset.group = groupIdx;
-    clone.querySelector(".rank").innerText = ""; // убираем ранг в selected
+    clone.querySelector(".rank").innerText = "";
+
+    // === Клик для клона (с защитой suppressClick) ===
     clone.addEventListener("click", e => {
-      if (e.detail === 2) toggleSelected(clone);
+      if (clone.dataset.suppressClick === "true") {
+        delete clone.dataset.suppressClick;
+        return;
+      }
+      if (e.detail === 2) {
+        toggleSelected(clone);
+      }
     });
-    
+
+    // === Двойной тап для клона ===
+    attachDoubleTapHandler(clone);
+
     if (groupIdx === 0) {
       goalsSelected.appendChild(clone);
       sortGoals();
@@ -446,17 +488,17 @@ function sortOthers() {
 }
 
 function canAddMore(groupIdx) {
-  if (groupIdx === 0) { // Жизненные цели
+  if (groupIdx === 0) {
     return selectedCards.filter(c => c.groupIdx === 0).length < 3;
   } else {
     return selectedCards.filter(c => c.groupIdx === groupIdx).length < 1;
   }
 }
 
-// Drag functions for desktop
+// ==================== DRAG & DROP (исправлено для iPhone) ====================
 function dragStart(e) {
   this.classList.add("dragging");
-  e.dataTransfer.setData("text/plain", ""); // Required for Firefox
+  e.dataTransfer.setData("text/plain", "");
   setTimeout(() => {
     this.style.visibility = 'hidden';
   }, 0);
@@ -479,7 +521,6 @@ let lastClientX = 0;
 let lastClientY = 0;
 let isDragging = false;
 
-// Touch functions for mobile
 function touchStart(e) {
   if (e.touches.length !== 1) return;
   touchElem = this;
@@ -489,9 +530,10 @@ function touchStart(e) {
   lastClientX = e.touches[0].clientX;
   lastClientY = e.touches[0].clientY;
   this.classList.add("dragging");
-  this.style.visibility = 'hidden';
+  
+  // ИСПРАВЛЕНИЕ ДЛЯ IPHONE: используем opacity вместо visibility (лучшая совместимость)
+  this.style.opacity = '0';
 
-  // Create ghost element for visual feedback
   ghostElem = this.cloneNode(true);
   ghostElem.style.position = "absolute";
   ghostElem.style.zIndex = 1000;
@@ -524,7 +566,8 @@ function touchEnd(e) {
     ghostElem = null;
   }
   touchElem.classList.remove("dragging");
-  touchElem.style.visibility = '';
+  // ИСПРАВЛЕНИЕ ДЛЯ IPHONE
+  touchElem.style.opacity = '';
   if (touchMoved) {
     updateOrder();
     updateRanks();
@@ -542,7 +585,6 @@ function moveGhost(touch) {
 
 function autoScroll() {
   if (!isDragging) return;
-
   const viewportHeight = window.innerHeight;
   const touchY = lastClientY;
   let scrollAmount = 0;
@@ -560,52 +602,39 @@ function autoScroll() {
     reorderWithAnimation(touchElem, lastClientX, lastClientY);
     touchMoved = true;
   }
-
   requestAnimationFrame(autoScroll);
 }
 
-// Dragover for desktop
 document.addEventListener("dragover", e => {
   e.preventDefault();
   const dragging = document.querySelector(".dragging");
   if (!dragging) return;
-
-  const clientX = e.clientX;
-  const clientY = e.clientY;
-  reorderWithAnimation(dragging, clientX, clientY);
+  reorderWithAnimation(dragging, e.clientX, e.clientY);
 });
 
-// Reorder with animation function
 function reorderWithAnimation(dragging, clientX, clientY) {
-  const srcRow = dragging.parentElement;
-  const targetGrid = dragging.parentElement; // Assume same grid, as cross not allowed
-
+  const targetGrid = dragging.parentElement;
   if (!targetGrid) return;
 
-  // Get current cards except dragging
   const cardsDOM = [...targetGrid.children].filter(c => c !== dragging && c.classList.contains('card'));
   const cards = cardsDOM.map(c => ({card: c, rect: c.getBoundingClientRect()}));
-
-  // Record old rects
   const oldRects = cards.map(({card, rect}) => ({card, rect}));
 
-  // Determine if horizontal or vertical
   const firstTwo = cards.slice(0, 2);
   const isHorizontal = firstTwo.length < 2 || Math.abs(firstTwo[0].rect.top - firstTwo[1].rect.top) < 1;
 
-  // Find nextCard
   const nextCard = cards.find(({card, rect}) => {
-    return isHorizontal ? clientX <= rect.left + rect.width / 2 : clientY <= rect.top + rect.height / 2;
+    return isHorizontal 
+      ? clientX <= rect.left + rect.width / 2 
+      : clientY <= rect.top + rect.height / 2;
   })?.card || null;
 
-  // Reorder
   if (nextCard) {
     targetGrid.insertBefore(dragging, nextCard);
   } else {
     targetGrid.appendChild(dragging);
   }
 
-  // Now animate the non-dragging cards
   oldRects.forEach(({card, rect}) => {
     const newRect = card.getBoundingClientRect();
     const deltaX = rect.left - newRect.left;
@@ -654,7 +683,7 @@ function exportPDF() {
   tempContainer.style.background = 'linear-gradient(135deg, #1f2937, #111827)';
   tempContainer.style.padding = '20px';
   tempContainer.style.color = 'white';
-  tempContainer.style.width = '1200px'; // Wider to avoid mobile media query
+  tempContainer.style.width = '1200px';
   document.body.appendChild(tempContainer);
 
   const title = document.createElement('h1');
@@ -686,7 +715,6 @@ function exportPDF() {
 
     top3Cards.forEach(card => {
       const clonedCard = card.cloneNode(true);
-      // Reset mobile styles for PDF
       clonedCard.style.width = '';
       clonedCard.style.maxWidth = '';
       clonedCard.style.height = '140px';
@@ -699,13 +727,11 @@ function exportPDF() {
     tempContainer.appendChild(tempRow);
   });
 
-  // Добавляем выбранные карты в PDF
   const selectedLabel = document.createElement("h2");
   selectedLabel.textContent = "Выбранные карты";
   selectedLabel.style.textAlign = "center";
   tempContainer.appendChild(selectedLabel);
 
-  // Goals row
   const tempGoalsRow = document.createElement("div");
   tempGoalsRow.className = "grid row-3";
   tempGoalsRow.style.gridTemplateColumns = "repeat(3, 110px)";
@@ -723,10 +749,8 @@ function exportPDF() {
     clonedCard.querySelector(".rank").innerText = "";
     tempGoalsRow.appendChild(clonedCard);
   });
-
   tempContainer.appendChild(tempGoalsRow);
 
-  // Others row
   const tempOthersRow = document.createElement("div");
   tempOthersRow.className = "grid row-6";
   tempOthersRow.style.gridTemplateColumns = "repeat(6, 110px)";
@@ -744,7 +768,6 @@ function exportPDF() {
     clonedCard.querySelector(".rank").innerText = "";
     tempOthersRow.appendChild(clonedCard);
   });
-
   tempContainer.appendChild(tempOthersRow);
 
   html2canvas(tempContainer, { scale: 2 }).then(canvas => {
@@ -760,22 +783,16 @@ function exportPDF() {
     while (heightLeft > 0) {
       const pageHeightInPdf = Math.min(pdfHeight, heightLeft);
       const srcHeight = pageHeightInPdf / ratio;
-
       const pageCanvas = document.createElement('canvas');
       pageCanvas.width = canvas.width;
       pageCanvas.height = srcHeight;
       const ctx = pageCanvas.getContext('2d');
       ctx.drawImage(canvas, 0, offsetY, canvas.width, srcHeight, 0, 0, canvas.width, srcHeight);
-
       const pageImgData = pageCanvas.toDataURL('image/png');
       pdf.addImage(pageImgData, 'PNG', 0, 0, imgWidth, pageHeightInPdf);
-
       offsetY += srcHeight;
       heightLeft -= pageHeightInPdf;
-
-      if (heightLeft > 0) {
-        pdf.addPage();
-      }
+      if (heightLeft > 0) pdf.addPage();
     }
 
     pdf.save(fileName);
